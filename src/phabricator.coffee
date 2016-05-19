@@ -2,12 +2,11 @@
 #   Auto-reply with descriptions and links to phabricator objects
 #
 # Dependencies:
-#   "canduit": "!1.0.0"
+#   "requests": "^0.1.7"
 #
 # Configuration:
-#   HUBOT_PHABRICATOR_USER=username
 #   HUBOT_PHABRICATOR_API=api-uri
-#   HUBOT_PHABRICATOR_CERT=certificate
+#   HUBOT_PHABRICATOR_API_TOKEN=api-xxxxxxxx
 #   HUBOT_PHABRICATOR_IGNORE=[T1000,D999,etc]
 #
 # Commands:
@@ -16,28 +15,26 @@
 # Author:
 #   kemayo
 
-createCanduit = require('canduit')
-
 module.exports = (robot) ->
-  config = {
-    user: process.env.HUBOT_PHABRICATOR_USER
-    api: process.env.HUBOT_PHABRICATOR_API
-    cert: process.env.HUBOT_PHABRICATOR_CERT
-    # logger: console
-  }
-  conduit = createCanduit config,
-    (error, conduit) ->
-
   ignore = (process.env.HUBOT_PHABRICATOR_IGNORE || '').replace(/\s+/g, '').split(',')
 
   # object (the TDPQFV bit is the things we recognize as prefixes)
   robot.hear /(?:^|[\[\s])([TDPQFV][0-9]+|r[A-Z]+[a-f0-9]+)(?:\s*(-v))?(?=\W|$)/g, (msg) ->
-    names = (match.trim() for match in msg.match when match.trim() not in ignore)
-    if names.length == 0
+    matched_names = (match.trim() for match in msg.match when match.trim() not in ignore)
+    if matched_names.length == 0
       return
-    conduit.exec 'phid.lookup', {names: names}, (error, result) ->
-      if error
+    params = {
+      "api.token": process.env.HUBOT_PHABRICATOR_API_TOKEN,
+      names: matched_names
+    }
+    request.get {
+      uri: process.env.HUBOT_PHABRICATOR_API + "/phid.lookup",
+      qs: params
+    }, (err, r, body) ->
+      if err
+        console.log "error fetching phabricator objects: #{err}"
         return
-      hits = ("^ #{info.fullName} - #{info.uri}" for phid, info of result).join("\n")
+      data = JSON.parse body
+      hits = ("^ #{info.fullName} - #{info.uri}" for phid, info of data.result).join("\n")
       if hits
         msg.send hits
